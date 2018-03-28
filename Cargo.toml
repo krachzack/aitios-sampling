@@ -1,0 +1,10 @@
+[package]
+name = "aitios-sampling"
+version = "0.1.0"
+authors = ["krachzack <hello@phstadler.com>"]
+
+[dependencies]
+rand = "0.4"
+aitios-geom = { git = "https://github.com/krachzack/aitios-geom.git" }
+float_extras = "0.1.6"
+kdtree = "0.4.0"
