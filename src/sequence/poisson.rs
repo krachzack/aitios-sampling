@@ -167,7 +167,7 @@ impl<T, V> Poisson<T>
 use std::fmt::Debug;
 impl<T, V> Iterator for Poisson<T>
     where T : InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
-        V : Clone + Position          + Debug
+        V : Clone + Position
 {
     type Item = T::Vertex;
 
