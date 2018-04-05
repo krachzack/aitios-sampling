@@ -2,7 +2,7 @@
 use ::triangle_bins::TriangleBins;
 use ::tri::sample_bary;
 
-use geom::{Triangle, InterpolateVertex, Position, Vec3, split_at_edge_midpoints};
+use geom::{Triangle, TangentSpace, InterpolateVertex, Position, Vec3, split_at_edge_midpoints};
 use geom::prelude::*;
 
 use kdtree::KdTree;
@@ -34,7 +34,14 @@ pub struct Poisson<T> {
     min_point_distance: f32,
     /// Do not split a triangle if the resulting subfragments would have a smaller area than this
     disregard_area: f32,
-    previous_samples: KdTree<[f64; 3], [f64; 3]>
+    /// Remembers samples already generated as the f64 array and also remembers the associated normal
+    previous_samples: KdTree<Sample, [f64; 3]>
+}
+
+#[derive(Debug)]
+struct Sample {
+    position: Vec3,
+    normal: Vec3
 }
 
 impl<T, V> Poisson<T>
@@ -69,7 +76,7 @@ impl<T, V> Poisson<T>
         [ x as f64, y as f64, z as f64]
     }
 
-    fn meets_minimum_distance_requirement(&self, vtx: &T::Vertex) -> bool {
+    fn meets_minimum_distance_requirement(&self, vtx: &T::Vertex, vtx_normal: Vec3) -> bool {
         let position = Self::vtx_to_arr(vtx);
 
         // TODO do I even need to square this?
@@ -83,16 +90,23 @@ impl<T, V> Poisson<T>
         );
 
         match within {
-            Ok(within_points) => within_points.is_empty(),
+            // If no points found or all of the points within the distance have a normal rotated by
+            // more than 90° with respect to the proposed new point, they are considered to be in proximity
+            // and the test fails.
+            // Otherwise the found points could be a close but unrelated surface on the other
+            // side of a thin object
+            Ok(within_points) => within_points.iter().all(
+                |&(_, &Sample { normal, .. })| !Self::holds_angle_requirement(normal, vtx_normal)
+            ),
             Err(ErrorKind::ZeroCapacity) => true,
             Err(ErrorKind::NonFiniteCoordinate) => panic!("Vertex has infinite or NaN coordinate"),
             Err(other_error) => panic!("{:?}", other_error)
         }
     }
 
-    fn add_sample(&mut self, vtx: &T::Vertex) {
+    fn add_sample(&mut self, vtx: &T::Vertex, normal: Vec3) {
         let position = Self::vtx_to_arr(vtx);
-        self.previous_samples.add(position, position)
+        self.previous_samples.add(position, Sample { position: vtx.position(), normal })
             .expect("Failed to remember a sample for later in kdtree");
     }
 
@@ -120,21 +134,40 @@ impl<T, V> Poisson<T>
                 &squared_euclidean
             );
 
+            let fragment_normal = fragment.normal();
+
             match within {
-                Ok(within_points) => within_points.iter().any(|&(_, position)| fragment.is_inside_sphere(
-                    Vec3::new(position[0] as f32, position[1] as f32, position[2] as f32),
-                    r
-                )),
+                Ok(within_points) => within_points.iter().any(|&(_, sample)| {
+                    let &Sample { position, normal } = sample;
+
+                    // If the normal of an existing sample differs by more than 90° compared
+                    // to the normal of the fragment, do not take it into account in the covered
+                    // check. This ensures surfel generation will not be influenced by generation
+                    // of surfels on the other side of a thin surface with respect to the min
+                    // point distance.
+                    Self::holds_angle_requirement(normal, fragment_normal) &&
+                    fragment.is_inside_sphere(
+                        Vec3::new(position[0] as f32, position[1] as f32, position[2] as f32),
+                        r
+                    )
+                }),
                 Err(ErrorKind::ZeroCapacity) => false,
                 Err(other_error) => panic!("{:?}", other_error)
             }
         }
     }
+
+    /// Checks if two normals have an interior angle of less than 90°
+    fn holds_angle_requirement(normal1: Vec3, normal2: Vec3) -> bool {
+        const DISREGARD_ANGLE_COS : f32 = 0.0;
+        normal1.dot(normal2) > DISREGARD_ANGLE_COS
+    }
 }
 
+use std::fmt::Debug;
 impl<T, V> Iterator for Poisson<T>
     where T : InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
-        V : Clone + Position
+        V : Clone + Position          + Debug
 {
     type Item = T::Vertex;
 
@@ -148,9 +181,10 @@ impl<T, V> Iterator for Poisson<T>
 
             let sample = {
                 let sample_candidate = Self::generate_sample(&fragment);
+                let fragment_normal = fragment.normal();
 
-                if self.meets_minimum_distance_requirement(&sample_candidate) {
-                    self.add_sample(&sample_candidate);
+                if self.meets_minimum_distance_requirement(&sample_candidate, fragment_normal) {
+                    self.add_sample(&sample_candidate, fragment_normal);
                     Some(sample_candidate)
                 } else {
                     None
@@ -234,7 +268,6 @@ mod test {
         let vertices : Vec<_> = poisson_disk_set(quad.iter(), minimum_distance).collect();
 
         assert!(vertices.len() > 50, "Unexpectedly low number of points yielded");
-
 
         for vtx0 in &vertices {
             let mut below_min_distance_cnt = 0;
