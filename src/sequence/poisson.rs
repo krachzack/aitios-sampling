@@ -2,7 +2,8 @@
 use ::triangle_bins::TriangleBins;
 use ::tri::sample_bary;
 
-use geom::{Triangle, TangentSpace, InterpolateVertex, Position, Vec3, split_at_edge_midpoints};
+use geom::{Triangle, TangentSpace, InterpolateVertex, Position, Vec3};
+use geom::tri::split_at_edge_midpoints;
 use geom::prelude::*;
 
 use kdtree::KdTree;
@@ -164,7 +165,6 @@ impl<T, V> Poisson<T>
     }
 }
 
-use std::fmt::Debug;
 impl<T, V> Iterator for Poisson<T>
     where T : InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
         V : Clone + Position
