@@ -13,12 +13,14 @@ extern crate rand;
 extern crate float_extras;
 extern crate kdtree;
 
+mod cosine_weighted;
 mod uniform;
 mod unit;
 mod tri;
 mod triangle_bins;
 pub mod sequence;
 
+pub use self::cosine_weighted::CosineWeighted;
 pub use self::uniform::Uniform;
 pub use self::unit::*;
 pub use self::tri::sample_bary;

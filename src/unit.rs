@@ -1,4 +1,5 @@
-use super::uniform::Uniform;
+use uniform::Uniform;
+use cosine_weighted::CosineWeighted;
 use geom::Vec3;
 use geom::prelude::*;
 use rand;
@@ -35,12 +36,38 @@ pub enum UnitHemisphere {
 }
 
 impl Uniform for UnitHemisphere {
-
     /// Uniformly samples the given hemisphere.
     ///
     /// Sampling method from this
     /// [blog article](http://www.rorydriscoll.com/2009/01/07/better-sampling/).
     fn uniform(&self) -> Vec3 {
+        let u1 : f32 = rand::random();
+        let u2 : f32 = rand::random();
+
+        let radius = (1.0 - u1 * u1).sqrt();
+        let phi = 2.0 * PI * u2;
+
+        let x = phi.cos() * radius;
+        let y = phi.sin() * radius;
+        let z = u1;
+
+        match self {
+            &UnitHemisphere::PosZ => Vec3::new(x, y, z),
+            &UnitHemisphere::NegZ => Vec3::new(x, y, -z),
+            &UnitHemisphere::PosY => Vec3::new(x, z, y),
+            &UnitHemisphere::NegY => Vec3::new(x, -z, y),
+            &UnitHemisphere::PosX => Vec3::new(z, y, x),
+            &UnitHemisphere::NegX => Vec3::new(-z, y, x)
+        }
+    }
+}
+
+impl CosineWeighted for UnitHemisphere {
+    /// Gets a cosine-weighted sample from the hemisphere by uniformly generating
+    /// a point on a disk and then projecting it onto the hemisphere. The sampling
+    /// method is described in this
+    /// [blog article](http://www.rorydriscoll.com/2009/01/07/better-sampling/).
+    fn cosine_weighted(&self) -> Vec3 {
         let u1 : f32 = rand::random();
         let u2 : f32 = rand::random();
 
@@ -83,8 +110,13 @@ mod test {
     }
 
     #[bench]
-    fn bench_cosine_weighted_hemisphere_sampling(bencher: &mut Bencher) {
+    fn bench_uniform_hemisphere_sampling(bencher: &mut Bencher) {
         bencher.iter(|| UnitHemisphere::PosZ.uniform());
+    }
+
+    #[bench]
+    fn bench_cosine_weighted_hemisphere_sampling(bencher: &mut Bencher) {
+        bencher.iter(|| UnitHemisphere::PosZ.cosine_weighted());
     }
 
     #[bench]
