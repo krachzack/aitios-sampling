@@ -65,6 +65,7 @@ impl Uniform for UnitHemisphere {
 #[cfg(test)]
 mod test {
     use super::*;
+    use test::Bencher;
 
     #[test]
     fn test_normalized_unit_sphere() {
@@ -81,6 +82,17 @@ mod test {
         (1..100).for_each(|_| assert_ulps_eq!(1.0, UnitHemisphere::NegZ.uniform().magnitude()));
     }
 
+    #[bench]
+    fn bench_cosine_weighted_hemisphere_sampling(bencher: &mut Bencher) {
+        bencher.iter(|| UnitHemisphere::PosZ.uniform());
+    }
+
+    #[bench]
+    fn bench_naive_hemisphere_sampling(bencher: &mut Bencher) {
+        bencher.iter(|| uniform_naive(&UnitHemisphere::PosZ));
+    }
+
+    /// Naive algorithm for performance comparison
     fn uniform_naive(hemisphere: &UnitHemisphere) -> Vec3 {
         let (range_x, range_y, range_z) = match hemisphere {
             &UnitHemisphere::PosX => (Range::new(0.0f32, 1.0), Range::new(-1.0f32, 1.0), Range::new(-1.0f32, 1.0)),

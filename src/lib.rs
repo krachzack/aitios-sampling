@@ -3,6 +3,10 @@
 //! * efficiently selecting a triangle out of a large set by area with  [`TriangleBins`](struct.TriangleBins.html),
 //! * sequences of uniformly sampled points, e.g. [`Poisson`](sequence/struct.Poisson.html) for a poisson disk set obtained from triangles.
 
+#![feature(test)]
+#[cfg(test)]
+extern crate test;
+
 #[cfg_attr(test, macro_use)]
 extern crate aitios_geom as geom;
 extern crate rand;
