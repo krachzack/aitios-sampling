@@ -1,15 +1,14 @@
 use geom::Triangle;
 
-use ::rand;
-use ::rand::Rng;
+use rand;
+use rand::Rng;
 
 use std::f32;
 use std::iter::FromIterator;
 
-use ::float_extras::f64::ilogb;
+use float_extras::f64::ilogb;
 
-pub struct TriangleBins<T>
-{
+pub struct TriangleBins<T> {
     bins: Vec<Vec<T>>,
     /// One over the value of one area unit in bin_areas and bin_areas_sum
     inv_area_quantum: f32,
@@ -23,14 +22,16 @@ pub struct TriangleBins<T>
     bin_areas: Vec<u64>,
     /// Contains the upper bounds for triangles stored in a bin
     bin_max_areas: Vec<f32>,
-    triangle_count: usize
+    triangle_count: usize,
 }
 
 impl<T> FromIterator<T> for TriangleBins<T>
-    where T : Triangle
+where
+    T: Triangle,
 {
     fn from_iter<I>(iter: I) -> Self
-        where I: IntoIterator<Item = T>
+    where
+        I: IntoIterator<Item = T>,
     {
         // 32 should be enough for most use cases
         TriangleBins::new(iter.into_iter().collect(), 32)
@@ -38,20 +39,22 @@ impl<T> FromIterator<T> for TriangleBins<T>
 }
 
 impl<T> TriangleBins<T>
-    where T : Triangle
+where
+    T: Triangle,
 {
     pub fn new(triangles: Vec<T>, bin_count: usize) -> Self {
         let (bins, first_bin_max_area) = partition_triangles(triangles, bin_count);
 
-        let bin_max_areas : Vec<f32> = (0..bin_count)
+        let bin_max_areas: Vec<f32> = (0..bin_count)
             .map(|bin_idx| first_bin_max_area * (2.0 as f32).powi(-(bin_idx as i32)))
             .collect();
 
         // This leads to the smallest possible triangle having size 50,
         // and largest having size 0.01 * 2^(bin_count-1), which is 21_474_836.48 for 32 bins
-        let inv_area_quantum = 1.0 / (0.01 * bin_max_areas[bin_count-1]);
+        let inv_area_quantum = 1.0 / (0.01 * bin_max_areas[bin_count - 1]);
 
-        let bin_areas : Vec<u64> = bins.iter()
+        let bin_areas: Vec<u64> = bins
+            .iter()
             .map(|b| {
                 b.iter()
                     .map(|t| {
@@ -63,14 +66,18 @@ impl<T> TriangleBins<T>
             })
             .collect();
 
-        let bin_areas_sum = bin_areas.iter()
-            .sum();
+        let bin_areas_sum = bin_areas.iter().sum();
 
-        let triangle_count = bins.iter()
-            .map(|b| b.len())
-            .sum();
+        let triangle_count = bins.iter().map(|b| b.len()).sum();
 
-        TriangleBins { bins, inv_area_quantum, bin_areas, bin_max_areas, bin_areas_sum, triangle_count }
+        TriangleBins {
+            bins,
+            inv_area_quantum,
+            bin_areas,
+            bin_max_areas,
+            bin_areas_sum,
+            triangle_count,
+        }
     }
 
     fn integral_area(&self, float_approximation: f32) -> u64 {
@@ -86,14 +93,17 @@ impl<T> TriangleBins<T>
 
     fn bin_idx_by_area(&self, area: f32) -> usize {
         let first_bin_max_area = self.bin_max_areas[0];
-        assert!(area <= first_bin_max_area, "Cannot push triangle with larger area than the largest triangle");
+        assert!(
+            area <= first_bin_max_area,
+            "Cannot push triangle with larger area than the largest triangle"
+        );
         // faster version of (first_bin_max_area / area).log2()
         ilogb((first_bin_max_area / area) as f64) as usize
     }
 
     pub fn push(&mut self, tri: T) {
         let area = tri.area();
-        let bin_idx =  self.bin_idx_by_area(area);
+        let bin_idx = self.bin_idx_by_area(area);
         if bin_idx < self.bins.len() {
             let area = self.integral_area(area);
 
@@ -180,9 +190,11 @@ impl<T> TriangleBins<T>
 }
 
 fn partition_triangles<T>(triangles: Vec<T>, bin_count: usize) -> (Vec<Vec<T>>, f32)
-    where T : Triangle
+where
+    T: Triangle,
 {
-    let max_area = triangles.iter()
+    let max_area = triangles
+        .iter()
         .map(|t| t.area())
         .fold(f32::NEG_INFINITY, f32::max);
 
@@ -211,7 +223,10 @@ fn partition_triangles<T>(triangles: Vec<T>, bin_count: usize) -> (Vec<Vec<T>>, 
 }
 
 fn bin_idx_by_area(max_area: f32, area: f32) -> usize {
-    assert!(area <= max_area, "Cannot push triangle with larger area than the largest triangle");
+    assert!(
+        area <= max_area,
+        "Cannot push triangle with larger area than the largest triangle"
+    );
     // faster version of (first_bin_max_area / area).log2()
     ilogb((max_area / area) as f64) as usize
 }
@@ -219,32 +234,30 @@ fn bin_idx_by_area(max_area: f32, area: f32) -> usize {
 #[cfg(test)]
 mod test {
     use super::*;
-    use geom::{TupleTriangle, Vertex, Vec3, Vec2, FromVertices};
+    use geom::{FromVertices, TupleTriangle, Vec2, Vec3, Vertex};
     use std::iter::once;
 
     #[test]
     fn test_build_from_tri_refs() {
-        let triangles = once(
-            TupleTriangle::new(
-                Vertex {
-                    position: Vec3::new(-1.0, -1.0, 0.0),
-                    normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(0.0, 0.0)
-                },
-                Vertex {
-                    position: Vec3::new(1.0, -1.0, 0.0),
-                    normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(1.0, 0.0)
-                },
-                Vertex {
-                    position: Vec3::new(0.0, 1.0, 0.0),
-                    normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(0.5, 1.0)
-                }
-            )
-        );
+        let triangles = once(TupleTriangle::new(
+            Vertex {
+                position: Vec3::new(-1.0, -1.0, 0.0),
+                normal: Vec3::new(0.0, 0.0, 1.0),
+                texcoords: Vec2::new(0.0, 0.0),
+            },
+            Vertex {
+                position: Vec3::new(1.0, -1.0, 0.0),
+                normal: Vec3::new(0.0, 0.0, 1.0),
+                texcoords: Vec2::new(1.0, 0.0),
+            },
+            Vertex {
+                position: Vec3::new(0.0, 1.0, 0.0),
+                normal: Vec3::new(0.0, 0.0, 1.0),
+                texcoords: Vec2::new(0.5, 1.0),
+            },
+        ));
 
-        let bins : TriangleBins<_> = triangles.collect();
+        let bins: TriangleBins<_> = triangles.collect();
 
         assert_eq!(1, bins.triangle_count());
     }
@@ -256,39 +269,39 @@ mod test {
                 Vertex {
                     position: Vec3::new(-1.0, -1.0, 0.0),
                     normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(0.0, 0.0)
+                    texcoords: Vec2::new(0.0, 0.0),
                 },
                 Vertex {
                     position: Vec3::new(1.0, -1.0, 0.0),
                     normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(1.0, 0.0)
+                    texcoords: Vec2::new(1.0, 0.0),
                 },
                 Vertex {
                     position: Vec3::new(0.0, 1.0, 0.0),
                     normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(0.5, 1.0)
-                }
+                    texcoords: Vec2::new(0.5, 1.0),
+                },
             ),
             TupleTriangle::new(
                 Vertex {
                     position: Vec3::new(-0.4, -0.4, 0.0),
                     normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(0.0, 0.0)
+                    texcoords: Vec2::new(0.0, 0.0),
                 },
                 Vertex {
                     position: Vec3::new(0.4, -0.4, 0.0),
                     normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(0.4, 0.0)
+                    texcoords: Vec2::new(0.4, 0.0),
                 },
                 Vertex {
                     position: Vec3::new(0.0, 0.4, 0.0),
                     normal: Vec3::new(0.0, 0.0, 1.0),
-                    texcoords: Vec2::new(0.5, 1.0)
-                }
-            )
+                    texcoords: Vec2::new(0.5, 1.0),
+                },
+            ),
         ];
 
-        let bins : TriangleBins<_> = triangles.iter().cloned().collect();
+        let bins: TriangleBins<_> = triangles.iter().cloned().collect();
 
         assert_eq!(2, bins.triangle_count());
     }

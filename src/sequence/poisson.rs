@@ -1,30 +1,31 @@
+use tri::sample_bary;
+use triangle_bins::TriangleBins;
 
-use ::triangle_bins::TriangleBins;
-use ::tri::sample_bary;
-
-use geom::{Triangle, TangentSpace, InterpolateVertex, Position, Vec3};
-use geom::tri::split_at_edge_midpoints;
 use geom::prelude::*;
+use geom::tri::split_at_edge_midpoints;
+use geom::{InterpolateVertex, Position, TangentSpace, Triangle, Vec3};
 
-use kdtree::KdTree;
-use kdtree::ErrorKind;
 use kdtree::distance::squared_euclidean;
+use kdtree::ErrorKind;
+use kdtree::KdTree;
 
 use std::f32::consts::PI;
 use std::f32::EPSILON;
 
 pub fn poisson_disk_set<'a, T, V, I>(triangles: I, min_point_distance: f32) -> Poisson<T>
-    where T : 'a + Clone + InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
-        V : Clone + Position,
-        I : IntoIterator<Item = &'a T>
+where
+    T: 'a + Clone + InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
+    V: Clone + Position,
+    I: IntoIterator<Item = &'a T>,
 {
     Poisson::new(triangles.into_iter().cloned(), min_point_distance)
 }
 
 pub fn into_poisson_disk_set<T, V, I>(triangles: I, min_point_distance: f32) -> Poisson<T>
-    where T : Clone + InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
-        V : Clone + Position,
-        I : IntoIterator<Item = T>
+where
+    T: Clone + InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
+    V: Clone + Position,
+    I: IntoIterator<Item = T>,
 {
     Poisson::new(triangles.into_iter(), min_point_distance)
 }
@@ -36,23 +37,25 @@ pub struct Poisson<T> {
     /// Do not split a triangle if the resulting subfragments would have a smaller area than this
     disregard_area: f32,
     /// Remembers samples already generated as the f64 array and also remembers the associated normal
-    previous_samples: KdTree<Sample, [f64; 3]>
+    previous_samples: KdTree<Sample, [f64; 3]>,
 }
 
 #[derive(Debug)]
 struct Sample {
     position: Vec3,
-    normal: Vec3
+    normal: Vec3,
 }
 
 impl<T, V> Poisson<T>
-    where T : InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
-        V : Clone + Position
+where
+    T: InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
+    V: Clone + Position,
 {
     fn new<I>(triangles: I, min_point_distance: f32) -> Self
-        where I : IntoIterator<Item = T>
+    where
+        I: IntoIterator<Item = T>,
     {
-        let active_triangles : TriangleBins<T> = triangles.into_iter().collect();
+        let active_triangles: TriangleBins<T> = triangles.into_iter().collect();
 
         // disregardiness is a factor for running time vs amount of generated points
         // A value closer to zero will result in a more even spacing of points by
@@ -68,13 +71,13 @@ impl<T, V> Poisson<T>
             active_triangles,
             min_point_distance,
             disregard_area,
-            previous_samples
+            previous_samples,
         }
     }
 
     fn vtx_to_arr(vtx: &T::Vertex) -> [f64; 3] {
         let Vec3 { x, y, z } = vtx.position();
-        [ x as f64, y as f64, z as f64]
+        [x as f64, y as f64, z as f64]
     }
 
     fn meets_minimum_distance_requirement(&self, vtx: &T::Vertex, vtx_normal: Vec3) -> bool {
@@ -84,11 +87,9 @@ impl<T, V> Poisson<T>
         //      API is undocumented, could come up with own kdtree
         let dist_sqr = (self.min_point_distance * self.min_point_distance) as f64;
 
-        let within = self.previous_samples.within(
-            &position,
-            dist_sqr,
-            &squared_euclidean
-        );
+        let within = self
+            .previous_samples
+            .within(&position, dist_sqr, &squared_euclidean);
 
         match within {
             // If no points found or all of the points within the distance have a normal rotated by
@@ -96,18 +97,25 @@ impl<T, V> Poisson<T>
             // and the test fails.
             // Otherwise the found points could be a close but unrelated surface on the other
             // side of a thin object
-            Ok(within_points) => within_points.iter().all(
-                |&(_, &Sample { normal, .. })| !Self::holds_angle_requirement(normal, vtx_normal)
-            ),
+            Ok(within_points) => within_points.iter().all(|&(_, &Sample { normal, .. })| {
+                !Self::holds_angle_requirement(normal, vtx_normal)
+            }),
             Err(ErrorKind::ZeroCapacity) => true,
             Err(ErrorKind::NonFiniteCoordinate) => panic!("Vertex has infinite or NaN coordinate"),
-            Err(other_error) => panic!("{:?}", other_error)
+            Err(other_error) => panic!("{:?}", other_error),
         }
     }
 
     fn add_sample(&mut self, vtx: &T::Vertex, normal: Vec3) {
         let position = Self::vtx_to_arr(vtx);
-        self.previous_samples.add(position, Sample { position: vtx.position(), normal })
+        self.previous_samples
+            .add(
+                position,
+                Sample {
+                    position: vtx.position(),
+                    normal,
+                },
+            )
             .expect("Failed to remember a sample for later in kdtree");
     }
 
@@ -126,13 +134,13 @@ impl<T, V> Poisson<T>
             let proposed_covering_point = [
                 proposed_covering_point.x as f64,
                 proposed_covering_point.y as f64,
-                proposed_covering_point.z as f64
+                proposed_covering_point.z as f64,
             ];
 
             let within = self.previous_samples.within(
                 &proposed_covering_point,
                 min_cover_radius_sqr as f64,
-                &squared_euclidean
+                &squared_euclidean,
             );
 
             let fragment_normal = fragment.normal();
@@ -146,28 +154,29 @@ impl<T, V> Poisson<T>
                     // check. This ensures surfel generation will not be influenced by generation
                     // of surfels on the other side of a thin surface with respect to the min
                     // point distance.
-                    Self::holds_angle_requirement(normal, fragment_normal) &&
-                    fragment.is_inside_sphere(
-                        Vec3::new(position[0] as f32, position[1] as f32, position[2] as f32),
-                        r
-                    )
+                    Self::holds_angle_requirement(normal, fragment_normal)
+                        && fragment.is_inside_sphere(
+                            Vec3::new(position[0] as f32, position[1] as f32, position[2] as f32),
+                            r,
+                        )
                 }),
                 Err(ErrorKind::ZeroCapacity) => false,
-                Err(other_error) => panic!("{:?}", other_error)
+                Err(other_error) => panic!("{:?}", other_error),
             }
         }
     }
 
     /// Checks if two normals have an interior angle of less than 90°
     fn holds_angle_requirement(normal1: Vec3, normal2: Vec3) -> bool {
-        const DISREGARD_ANGLE_COS : f32 = 0.0;
+        const DISREGARD_ANGLE_COS: f32 = 0.0;
         normal1.dot(normal2) > DISREGARD_ANGLE_COS
     }
 }
 
 impl<T, V> Iterator for Poisson<T>
-    where T : InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
-        V : Clone + Position
+where
+    T: InterpolateVertex<Vertex = V> + FromVertices<Vertex = V>,
+    V: Clone + Position,
 {
     type Item = T::Vertex;
 
@@ -209,7 +218,7 @@ impl<T, V> Iterator for Poisson<T>
     }
 }
 
-fn minimum_bounding_sphere_sqr<T : Triangle>(tri: &T) -> (Vec3, f32) {
+fn minimum_bounding_sphere_sqr<T: Triangle>(tri: &T) -> (Vec3, f32) {
     let (a, b, c) = tri.positions();
     let dot_abab = (b - a).dot(b - a);
     let dot_abac = (b - a).dot(c - a);
@@ -235,7 +244,7 @@ fn minimum_bounding_sphere_sqr<T : Triangle>(tri: &T) -> (Vec3, f32) {
             reference_point = b;
             0.5 * (b + c)
         } else {
-            a + s*(b - a) + t*(c - a)
+            a + s * (b - a) + t * (c - a)
         }
     };
 
@@ -247,7 +256,7 @@ fn minimum_bounding_sphere_sqr<T : Triangle>(tri: &T) -> (Vec3, f32) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use geom::{TupleTriangle, FromVertices};
+    use geom::{FromVertices, TupleTriangle};
 
     #[test]
     fn test_sample_quad_poisson_disk_set() {
@@ -255,34 +264,44 @@ mod test {
             TupleTriangle::new(
                 Vec3::new(0.0, 0.0, 0.0),
                 Vec3::new(1.0, 0.0, 0.0),
-                Vec3::new(1.0, 1.0, 0.0)
+                Vec3::new(1.0, 1.0, 0.0),
             ),
             TupleTriangle::new(
                 Vec3::new(1.0, 1.0, 0.0),
                 Vec3::new(0.0, 1.0, 0.0),
-                Vec3::new(0.0, 0.0, 0.0)
-            )
+                Vec3::new(0.0, 0.0, 0.0),
+            ),
         ];
 
         let minimum_distance = 0.05;
-        let vertices : Vec<_> = poisson_disk_set(quad.iter(), minimum_distance).collect();
+        let vertices: Vec<_> = poisson_disk_set(quad.iter(), minimum_distance).collect();
 
-        assert!(vertices.len() > 50, "Unexpectedly low number of points yielded");
+        assert!(
+            vertices.len() > 50,
+            "Unexpectedly low number of points yielded"
+        );
 
         for vtx0 in &vertices {
             let mut below_min_distance_cnt = 0;
             let mut above_min_distance_cnt = 0;
 
             for vtx1 in &vertices {
-                if vtx1.position().distance2(*vtx0) >= (minimum_distance*minimum_distance) {
+                if vtx1.position().distance2(*vtx0) >= (minimum_distance * minimum_distance) {
                     above_min_distance_cnt += 1;
                 } else {
                     below_min_distance_cnt += 1;
                 }
             }
 
-            assert_eq!(1, below_min_distance_cnt, "Only the same vertex should have distance < min distance");
-            assert_eq!(vertices.len() - 1, above_min_distance_cnt, "All vertices except the same should have distance > min distance");
+            assert_eq!(
+                1, below_min_distance_cnt,
+                "Only the same vertex should have distance < min distance"
+            );
+            assert_eq!(
+                vertices.len() - 1,
+                above_min_distance_cnt,
+                "All vertices except the same should have distance > min distance"
+            );
         }
     }
 }

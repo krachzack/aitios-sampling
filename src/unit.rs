@@ -1,10 +1,10 @@
-use uniform::Uniform;
 use cosine_weighted::CosineWeighted;
-use geom::Vec3;
 use geom::prelude::*;
+use geom::Vec3;
 use rand;
 use rand::distributions::{IndependentSample, Range};
 use std::f32::consts::PI;
+use uniform::Uniform;
 
 pub struct UnitSphere;
 
@@ -16,7 +16,7 @@ impl Uniform for UnitSphere {
         let dir = Vec3::new(
             between.ind_sample(&mut rng),
             between.ind_sample(&mut rng),
-            between.ind_sample(&mut rng)
+            between.ind_sample(&mut rng),
         );
 
         if !dir.is_zero() {
@@ -30,9 +30,12 @@ impl Uniform for UnitSphere {
 
 /// A hemisphere of radius 1, with the bottom disk aligned to a plane
 pub enum UnitHemisphere {
-    PosX, NegX,
-    PosY, NegY,
-    PosZ, NegZ
+    PosX,
+    NegX,
+    PosY,
+    NegY,
+    PosZ,
+    NegZ,
 }
 
 impl Uniform for UnitHemisphere {
@@ -41,8 +44,8 @@ impl Uniform for UnitHemisphere {
     /// Sampling method from this
     /// [blog article](http://www.rorydriscoll.com/2009/01/07/better-sampling/).
     fn uniform(&self) -> Vec3 {
-        let u1 : f32 = rand::random();
-        let u2 : f32 = rand::random();
+        let u1: f32 = rand::random();
+        let u2: f32 = rand::random();
 
         let radius = (1.0 - u1 * u1).sqrt();
         let phi = 2.0 * PI * u2;
@@ -57,7 +60,7 @@ impl Uniform for UnitHemisphere {
             &UnitHemisphere::PosY => Vec3::new(x, z, y),
             &UnitHemisphere::NegY => Vec3::new(x, -z, y),
             &UnitHemisphere::PosX => Vec3::new(z, y, x),
-            &UnitHemisphere::NegX => Vec3::new(-z, y, x)
+            &UnitHemisphere::NegX => Vec3::new(-z, y, x),
         }
     }
 }
@@ -68,8 +71,8 @@ impl CosineWeighted for UnitHemisphere {
     /// method is described in this
     /// [blog article](http://www.rorydriscoll.com/2009/01/07/better-sampling/).
     fn cosine_weighted(&self) -> Vec3 {
-        let u1 : f32 = rand::random();
-        let u2 : f32 = rand::random();
+        let u1: f32 = rand::random();
+        let u2: f32 = rand::random();
 
         let r = u1.sqrt();
         let theta = 2.0 * PI * u2;
@@ -84,7 +87,7 @@ impl CosineWeighted for UnitHemisphere {
             &UnitHemisphere::PosY => Vec3::new(x, z, y),
             &UnitHemisphere::NegY => Vec3::new(x, -z, y),
             &UnitHemisphere::PosX => Vec3::new(z, y, x),
-            &UnitHemisphere::NegX => Vec3::new(-z, y, x)
+            &UnitHemisphere::NegX => Vec3::new(-z, y, x),
         }
     }
 }
@@ -92,7 +95,6 @@ impl CosineWeighted for UnitHemisphere {
 #[cfg(test)]
 mod test {
     use super::*;
-    use test::Bencher;
 
     #[test]
     fn test_normalized_unit_sphere() {
@@ -107,46 +109,5 @@ mod test {
         (1..100).for_each(|_| assert_ulps_eq!(1.0, UnitHemisphere::NegY.uniform().magnitude()));
         (1..100).for_each(|_| assert_ulps_eq!(1.0, UnitHemisphere::PosZ.uniform().magnitude()));
         (1..100).for_each(|_| assert_ulps_eq!(1.0, UnitHemisphere::NegZ.uniform().magnitude()));
-    }
-
-    #[bench]
-    fn bench_uniform_hemisphere_sampling(bencher: &mut Bencher) {
-        bencher.iter(|| UnitHemisphere::PosZ.uniform());
-    }
-
-    #[bench]
-    fn bench_cosine_weighted_hemisphere_sampling(bencher: &mut Bencher) {
-        bencher.iter(|| UnitHemisphere::PosZ.cosine_weighted());
-    }
-
-    #[bench]
-    fn bench_naive_hemisphere_sampling(bencher: &mut Bencher) {
-        bencher.iter(|| uniform_naive(&UnitHemisphere::PosZ));
-    }
-
-    /// Naive algorithm for performance comparison
-    fn uniform_naive(hemisphere: &UnitHemisphere) -> Vec3 {
-        let (range_x, range_y, range_z) = match hemisphere {
-            &UnitHemisphere::PosX => (Range::new(0.0f32, 1.0), Range::new(-1.0f32, 1.0), Range::new(-1.0f32, 1.0)),
-            &UnitHemisphere::NegX => (Range::new(-1.0f32, 0.0), Range::new(-1.0f32, 1.0), Range::new(-1.0f32, 1.0)),
-            &UnitHemisphere::PosY => (Range::new(-1.0f32, 1.0), Range::new(0.0f32, 1.0), Range::new(-1.0f32, 1.0)),
-            &UnitHemisphere::NegY => (Range::new(-1.0f32, 1.0), Range::new(-1.0f32, 0.0), Range::new(-1.0f32, 1.0)),
-            &UnitHemisphere::PosZ => (Range::new(-1.0f32, 1.0), Range::new(-1.0f32, 1.0), Range::new(0.0f32, 1.0)),
-            &UnitHemisphere::NegZ => (Range::new(-1.0f32, 1.0), Range::new(-1.0f32, 1.0), Range::new(-1.0f32, 0.0)),
-        };
-
-        let mut rng = rand::thread_rng();
-        let dir = Vec3::new(
-            range_x.ind_sample(&mut rng),
-            range_y.ind_sample(&mut rng),
-            range_z.ind_sample(&mut rng)
-        );
-
-        if !dir.is_zero() {
-            dir.normalize()
-        } else {
-            // If, by pure chance got a zero vector, try again so we can normalize it
-            uniform_naive(hemisphere)
-        }
     }
 }
